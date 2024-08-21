@@ -7,9 +7,10 @@ import torch
 from huggingface_hub import hf_hub_download
 from diffusers.models import ControlNetModel
 from controlnet_aux import OpenposeDetector
+import subprocess
 
 # append project directory to path so predict.py can be imported
-sys.path.append('.')
+sys.path.append(".")
 
 from depth_anything.dpt import DepthAnything
 from predict import (
@@ -21,7 +22,7 @@ from predict import (
     POSE_CHKPT_CACHE,
     CANNY_CHKPT_CACHE,
     DEPTH_CHKPT_CACHE,
-    LORA_CHECKPOINTS_CACHE
+    LORA_CHECKPOINTS_CACHE,
 )
 
 # for `models/antelopev2`
@@ -31,6 +32,7 @@ MODELS_URL = "https://weights.replicate.delivery/default/InstantID/models.tar"
 # for safety checker
 SAFETY_URL = "https://weights.replicate.delivery/default/sdxl/safety-1.0.tar"
 
+
 if not os.path.exists(MODELS_CACHE):
     download_weights(MODELS_URL, MODELS_CACHE)
 
@@ -38,7 +40,7 @@ if not os.path.exists(SAFETY_MODEL_CACHE):
     download_weights(SAFETY_URL, SAFETY_MODEL_CACHE)
 
 model_list = [
-    { 
+    {
         "repo_id": "InstantX/InstantID",
         "filename": "ip-adapter.bin",
         "use_symlinks": False,
@@ -82,7 +84,7 @@ if not os.path.exists(CHECKPOINTS_CACHE):
             repo_id=model["repo_id"],
             filename=model["filename"],
             local_dir_use_symlinks=model["use_symlinks"],
-            local_dir=model["local_dir"]
+            local_dir=model["local_dir"],
         )
 
 # Download and save the controlnet model weights
@@ -110,14 +112,10 @@ pipe = ControlNetModel.from_pretrained(
 pipe.save_pretrained(DEPTH_CHKPT_CACHE)
 
 # Download to cache
-OpenposeDetector.from_pretrained(
-    "lllyasviel/ControlNet",
-    cache_dir=CHECKPOINTS_CACHE
-)
+OpenposeDetector.from_pretrained("lllyasviel/ControlNet", cache_dir=CHECKPOINTS_CACHE)
 DepthAnything.from_pretrained(
-    'LiheYoung/depth_anything_vitl14',
-    cache_dir=CHECKPOINTS_CACHE
+    "LiheYoung/depth_anything_vitl14", cache_dir=CHECKPOINTS_CACHE
 )
 
 # Download and save default SDXL model only
-setup_sdxl_pipeline(DEFAULT_SDXL_MODEL)
+# setup_sdxl_pipeline(DEFAULT_SDXL_MODEL)

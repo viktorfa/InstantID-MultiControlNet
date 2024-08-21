@@ -50,7 +50,7 @@ FEATURE_EXTRACT_CACHE = "feature_extractor"
 LORA_CHECKPOINTS_CACHE = f"{CHECKPOINTS_CACHE}/lora"
 
 # default SDXL model
-DEFAULT_SDXL_MODEL = "AlbedoBase XL V2"
+DEFAULT_SDXL_MODEL = "SDXL RongHua V4"
 
 # global variable
 MAX_SEED = np.iinfo(np.int32).max
@@ -119,15 +119,9 @@ def download_weights(url, dest, extract=True) -> None:
     print("downloading to: ", dest)
 
     if extract:
-        subprocess.check_call(
-            ["pget", "--pid-file", "/home/viktor/.pget/pget.pid", "-x", url, dest],
-            close_fds=False,
-        )
+        subprocess.check_call(["pget", "-x", url, dest], close_fds=False)
     else:
-        subprocess.check_call(
-            ["pget", "--pid-file", "/home/viktor/.pget/pget.pid", url, dest],
-            close_fds=False,
-        )
+        subprocess.check_call(["pget", url, dest], close_fds=False)
     print("downloading took: ", time.time() - start)
 
 
