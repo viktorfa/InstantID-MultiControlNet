@@ -2,7 +2,7 @@
 # Reference: https://github.com/replicate/cog/blob/main/docs/yaml.md
 
 # docker image name
-image: "r8.im/tgohblio/instant-id-multicontrolnet"
+image: "r8.im/viktorfa/instant-id-multicontrolnet-multiple-images"
 
 build:
   # set to true if your model requires a GPU

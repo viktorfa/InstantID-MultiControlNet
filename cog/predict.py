@@ -21,12 +21,14 @@ from diffusers import EulerDiscreteScheduler, StableDiffusionXLPipeline
 from diffusers.utils import load_image
 from diffusers.models import ControlNetModel
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 from transformers import CLIPImageProcessor
 from insightface.app import FaceAnalysis
 from controlnet_aux import OpenposeDetector
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from pipeline_stable_diffusion_xl_instantid_full import (
     StableDiffusionXLInstantIDPipeline,
     draw_kps,
@@ -82,21 +84,24 @@ def resize_img(
         res = np.ones([max_side, max_side, 3], dtype=np.uint8) * 255
         offset_x = (max_side - w_resize_new) // 2
         offset_y = (max_side - h_resize_new) // 2
-        res[
-            offset_y : offset_y + h_resize_new, offset_x : offset_x + w_resize_new
-        ] = np.array(input_image)
+        res[offset_y : offset_y + h_resize_new, offset_x : offset_x + w_resize_new] = (
+            np.array(input_image)
+        )
         input_image = Image.fromarray(res)
     return input_image
+
 
 def convert_from_cv2_to_image(img: np.ndarray) -> Image:
     return Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
+
 def convert_from_image_to_cv2(img: Image) -> np.ndarray:
     return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
 
-def list_models(path:str) -> list:
+
+def list_models(path: str) -> list:
     """Return all model names in the json file given by path
-    
+
     Arguments:
         path:str path to json file
     """
@@ -106,16 +111,25 @@ def list_models(path:str) -> list:
         model_list = [model.get("name") for model in data["model"]]
     return model_list
 
+
 def download_weights(url, dest, extract=True) -> None:
     """Helper function to download model weights"""
     start = time.time()
     print("downloading url: ", url)
     print("downloading to: ", dest)
+
     if extract:
-        subprocess.check_call(["pget", "-x", url, dest], close_fds=False)
+        subprocess.check_call(
+            ["pget", "--pid-file", "/home/viktor/.pget/pget.pid", "-x", url, dest],
+            close_fds=False,
+        )
     else:
-        subprocess.check_call(["pget", url, dest], close_fds=False)
+        subprocess.check_call(
+            ["pget", "--pid-file", "/home/viktor/.pget/pget.pid", url, dest],
+            close_fds=False,
+        )
     print("downloading took: ", time.time() - start)
+
 
 def setup_sdxl_pipeline(model_name: str) -> str:
     """Helper function to download and load weights into SDXL pipeline"""
@@ -131,21 +145,25 @@ def setup_sdxl_pipeline(model_name: str) -> str:
                     print(f"Downloading new SDXL weights: {file_path}")
                     download_weights(model["url"], file_path, False)
                     pipe = StableDiffusionXLPipeline.from_single_file(
-                        file_path,
-                        torch_dtype=torch.float16
+                        file_path, torch_dtype=torch.float16
                     )
                     # Save to cache folder. Will be created if doesn't exist.
                     pipe.save_pretrained(cache_dir)
                 break
     return cache_dir
 
+
 class Predictor(BasePredictor):
     def setup(self) -> None:
         """Load safety checker"""
         self.safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-            SAFETY_MODEL_CACHE, torch_dtype=dtype
+            "CompVis/stable-diffusion-safety-checker",
+            root=SAFETY_MODEL_CACHE,
+            torch_dtype=dtype,
         ).to(device)
-        self.feature_extractor = CLIPImageProcessor.from_pretrained(FEATURE_EXTRACT_CACHE)
+        self.feature_extractor = CLIPImageProcessor.from_pretrained(
+            FEATURE_EXTRACT_CACHE
+        )
 
         """Load the model into memory to make running multiple predictions efficient"""
         self.width, self.height = 640, 640
@@ -158,28 +176,33 @@ class Predictor(BasePredictor):
 
         # Load openpose and depth-anything controlnet pipelines
         self.openpose = OpenposeDetector.from_pretrained(
-            "lllyasviel/ControlNet",
-            cache_dir=CHECKPOINTS_CACHE
+            "lllyasviel/ControlNet", cache_dir=CHECKPOINTS_CACHE
         )
-        self.depth_anything = DepthAnything.from_pretrained(
-            'LiheYoung/depth_anything_vitl14',
-            cache_dir=CHECKPOINTS_CACHE,
-            local_files_only=True
-        ).to(device).eval()
+        self.depth_anything = (
+            DepthAnything.from_pretrained(
+                "LiheYoung/depth_anything_vitl14",
+                cache_dir=CHECKPOINTS_CACHE,
+                local_files_only=True,
+            )
+            .to(device)
+            .eval()
+        )
 
-        self.transform = Compose([
-            Resize(
-                width=518,
-                height=518,
-                resize_target=False,
-                keep_aspect_ratio=True,
-                ensure_multiple_of=14,
-                resize_method='lower_bound',
-                image_interpolation_method=cv2.INTER_CUBIC,
-            ),
-            NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            PrepareForNet(),
-        ])
+        self.transform = Compose(
+            [
+                Resize(
+                    width=518,
+                    height=518,
+                    resize_target=False,
+                    keep_aspect_ratio=True,
+                    ensure_multiple_of=14,
+                    resize_method="lower_bound",
+                    image_interpolation_method=cv2.INTER_CUBIC,
+                ),
+                NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                PrepareForNet(),
+            ]
+        )
 
         # Path to InstantID models
         self.face_adapter = f"{CHECKPOINTS_CACHE}/ip-adapter.bin"
@@ -214,7 +237,7 @@ class Predictor(BasePredictor):
             torch_dtype=dtype,
             use_safetensors=True,
             cache_dir=DEPTH_CHKPT_CACHE,
-            local_files_only=True,    
+            local_files_only=True,
         ).to(device)
 
         # setup the InstantID pipeline
@@ -242,8 +265,7 @@ class Predictor(BasePredictor):
         )
         # Ensure sampler uses "trailing" timesteps for lightning LoRA
         self.pipe.scheduler = EulerDiscreteScheduler.from_config(
-            self.pipe.scheduler.config,
-            timestep_spacing="trailing"
+            self.pipe.scheduler.config, timestep_spacing="trailing"
         )
 
         self.pipe.disable_lora()
@@ -267,13 +289,15 @@ class Predictor(BasePredictor):
         image = np.array(image) / 255.0
         h, w = image.shape[:2]
 
-        image = self.transform({'image': image})['image']
+        image = self.transform({"image": image})["image"]
         image = torch.from_numpy(image).unsqueeze(0).to("cuda")
 
         with torch.no_grad():
             depth = self.depth_anything(image)
 
-        depth = F.interpolate(depth[None], (h, w), mode='bilinear', align_corners=False)[0, 0]
+        depth = F.interpolate(
+            depth[None], (h, w), mode="bilinear", align_corners=False
+        )[0, 0]
         depth = (depth - depth.min()) / (depth.max() - depth.min()) * 255.0
         depth = depth.cpu().numpy().astype(np.uint8)
         depth_image = Image.fromarray(depth)
@@ -287,7 +311,9 @@ class Predictor(BasePredictor):
 
     def run_safety_checker(self, image) -> (list, list):
         """Detect nsfw content"""
-        safety_checker_input = self.feature_extractor(image, return_tensors="pt").to(device)
+        safety_checker_input = self.feature_extractor(image, return_tensors="pt").to(
+            device
+        )
         np_image = [np.array(val) for val in image]
         image, has_nsfw_concept = self.safety_checker(
             images=np_image,
@@ -299,6 +325,9 @@ class Predictor(BasePredictor):
     def predict(
         self,
         face_image_path: Path = Input(description="Image of your face"),
+        face_image_path2: Path = Input(description="Image of your face", default=None),
+        face_image_path3: Path = Input(description="Image of your face", default=None),
+        face_image_path4: Path = Input(description="Image of your face", default=None),
         pose_image_path: Path = Input(
             description="Reference pose image",
             default=None,
@@ -313,12 +342,12 @@ class Predictor(BasePredictor):
         ),
         model: str = Input(
             description="Select SDXL model",
-            default="AlbedoBase XL V2",
+            default="SDXL RongHua V4",
             choices=list_models("./cog/img_models.json"),
         ),
         enable_fast_mode: bool = Input(
             description="Enable SDXL-lightning fast inference. If pose, canny or depth map is used, disable it for better quality images.",
-            default=True,
+            default=False,
         ),
         lightning_steps: str = Input(
             description="if enable fast mode, choose number of denoising steps",
@@ -339,7 +368,7 @@ class Predictor(BasePredictor):
                 "DPMSolverMultistepScheduler-Karras",
                 "DPMSolverMultistepScheduler-Karras-SDE",
             ],
-            default="DPMSolverMultistepScheduler",
+            default="DPMSolverMultistepScheduler-Karras-SDE",
         ),
         adapter_strength_ratio: float = Input(
             description="Image adapter strength (for detail)",
@@ -349,7 +378,7 @@ class Predictor(BasePredictor):
         ),
         identitynet_strength_ratio: float = Input(
             description="IdentityNet strength (for fidelity)",
-            default=0.8,
+            default=0.9,
             ge=0,
             le=1,
         ),
@@ -399,47 +428,76 @@ class Predictor(BasePredictor):
             le=MAX_SEED,
         ),
         enhance_non_face_region: bool = Input(
-            description="Enhance non-face region",
-            default=True
+            description="Enhance non-face region", default=True
         ),
         safety_checker: bool = Input(
             description="Safety checker is enabled by default. Un-tick to expose unfiltered results.",
             default=True,
         ),
     ) -> Path:
-        """Run a single prediction on the model"""    
+        """Run a single prediction on the model"""
         # Load the weights if they are different from the base weights
         if model != self.model:
             setup_sdxl_pipeline(model)
             self.model = model
 
         if face_image_path is None:
-            raise Exception(
-                f"Unable find any photo. Please upload it."
-            )
+            raise Exception("Unable to find any photo. Please upload it.")
 
-        # Load and resize the face image
-        face_image = load_image(str(face_image_path))
-        face_image = resize_img(face_image, max_side=1024)
-        face_image_cv2 = convert_from_image_to_cv2(face_image)
-        height, width, _ = face_image_cv2.shape
+        # Load and resize all face images
+        image_paths = [
+            face_image_path,
+            face_image_path2,
+            face_image_path3,
+            face_image_path4,
+        ]
 
-        # Extract face features
-        face_info = self.app.get(face_image_cv2)
-        if len(face_info) == 0:
-            raise ValueError(
-                "Unable to detect your face in the photo. Please upload a different photo with a clear face."
-            )
-        # only use the maximum face
-        face_info = sorted(
-            face_info,
-            key=lambda x: (x["bbox"][2] - x["bbox"][0]) * (x["bbox"][3] - x["bbox"][1]),
-        )[-1]
-        face_emb = face_info["embedding"]
-        face_kps = draw_kps(convert_from_cv2_to_image(face_image_cv2), face_info["kps"])
-        img_controlnet = face_image
+        face_images = []
+        for image_path in image_paths:
+            if image_path is not None:
+                face_image = load_image(str(image_path))
+                face_image = resize_img(face_image, max_side=1024)
+                face_images.append(face_image)
 
-        # If pose image is provided, use it to extra the pose
+        if len(face_images) == 0:
+            raise Exception("Unable to find any photo. Please upload it.")
+
+        # Convert images to OpenCV format and get face embeddings
+        cv2_face_images = [
+            convert_from_image_to_cv2(face_image) for face_image in face_images
+        ]
+        face_infos = [
+            self.app.get(cv2_face_image) for cv2_face_image in cv2_face_images
+        ]
+
+        # Validate detected faces and sort them by the largest face
+        for i, face_info in enumerate(face_infos):
+            if len(face_info) == 0:
+                raise ValueError(
+                    "Unable to detect your face in the photo. Please upload a different photo with a clear face."
+                )
+            face_infos[i] = sorted(
+                face_info,
+                key=lambda x: (x["bbox"][2] - x["bbox"][0])
+                * (x["bbox"][3] - x["bbox"][1]),
+            )[-1]
+
+        # Calculate the average embedding from multiple face images
+        face_embs = [face_info["embedding"] for face_info in face_infos]
+        average_face_emb = np.mean(face_embs, axis=0)
+
+        # Optionally, visualize key points (if needed)
+        face_kps = [
+            draw_kps(convert_from_cv2_to_image(cv2_face_image), face_info["kps"])
+            for cv2_face_image, face_info in zip(cv2_face_images, face_infos)
+        ]
+
+        # Choose the primary image for controlnet processing
+        img_controlnet = face_images[
+            0
+        ]  # Or choose another strategy for selecting the primary image
+
+        # Handle pose image if provided
         if pose_image_path is not None:
             pose_image = load_image(str(pose_image_path))
             pose_image = resize_img(pose_image, max_side=1024)
@@ -452,14 +510,18 @@ class Predictor(BasePredictor):
                 raise ValueError(
                     "Unable to detect a face in the reference image. Please upload another person's image."
                 )
-            # only use the maximum face
             face_info = sorted(
                 face_info,
-                key=lambda x: (x["bbox"][2] - x["bbox"][0]) * (x["bbox"][3] - x["bbox"][1]),
+                key=lambda x: (x["bbox"][2] - x["bbox"][0])
+                * (x["bbox"][3] - x["bbox"][1]),
             )[-1]
             face_kps = draw_kps(pose_image, face_info["kps"])
-            width, height = face_kps.size
+            height, width = face_kps.size
+        else:
+            # Set height and width from the face image
+            height, width, _ = cv2_face_images[0].shape
 
+        # Create control mask if needed
         if enhance_non_face_region:
             control_mask = np.zeros([height, width, 3])
             x1, y1, x2, y2 = face_info["bbox"]
@@ -469,6 +531,7 @@ class Predictor(BasePredictor):
         else:
             control_mask = None
 
+        # Prepare ControlNet configuration
         controlnet_map = {
             "pose": self.controlnet_pose,
             "canny": self.controlnet_canny,
@@ -494,18 +557,23 @@ class Predictor(BasePredictor):
                 "canny": canny_strength,
                 "depth": depth_strength,
             }
-            self.pipe.controlnet = MultiControlNetModel([self.controlnet_identitynet] + [controlnet_map[s] for s in controlnet_selection])
-            control_scales = [float(identitynet_strength_ratio)] + [controlnet_scales[s] for s in controlnet_selection]
-            control_images = [face_kps] + [
+            self.pipe.controlnet = MultiControlNetModel(
+                [self.controlnet_identitynet]
+                + [controlnet_map[s] for s in controlnet_selection]
+            )
+            control_scales = [float(identitynet_strength_ratio)] + [
+                controlnet_scales[s] for s in controlnet_selection
+            ]
+            control_images = [face_kps[0]] + [
                 controlnet_map_fn[s](img_controlnet).resize((width, height))
                 for s in controlnet_selection
             ]
         else:
             self.pipe.controlnet = self.controlnet_identitynet
             control_scales = float(identitynet_strength_ratio)
-            control_images = face_kps
+            control_images = face_kps[0]
 
-        # load LCM LoRA if enabled, else use other schedulers
+        # Load LCM LoRA if enabled, else use other schedulers
         if enable_fast_mode:
             if self.lightning_steps != lightning_steps:
                 self.load_lightning_lora(lightning_steps)
@@ -538,7 +606,7 @@ class Predictor(BasePredictor):
         image = self.pipe(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            image_embeds=face_emb,
+            image_embeds=average_face_emb,
             image=control_images,
             control_mask=control_mask,
             controlnet_conditioning_scale=control_scales,
@@ -548,14 +616,19 @@ class Predictor(BasePredictor):
             height=height,
             width=width,
         ).images[0]
+
         output_path = "result.jpg"
 
         output = [image]
         if safety_checker:
             image_list, has_nsfw_content = self.run_safety_checker(output)
             if has_nsfw_content[0]:
-                print("NSFW content detected. Try running it again, rephrase different prompt or add 'nsfw' in the negative prompt.")
-                black = Image.fromarray(np.uint8(image_list[0])).convert('RGB')    # black box image
+                print(
+                    "NSFW content detected. Try running it again, rephrase different prompt or add 'nsfw' in the negative prompt."
+                )
+                black = Image.fromarray(np.uint8(image_list[0])).convert(
+                    "RGB"
+                )  # black box image
                 black.save(output_path)
             else:
                 image.save(output_path)
