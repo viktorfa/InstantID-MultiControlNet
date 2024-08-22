@@ -2,10 +2,12 @@
 # https://github.com/replicate/cog/blob/main/docs/python.md
 
 import os
+import glob
 import sys
 import json
 import subprocess
 import time
+from pathlib import Path
 from cog import BasePredictor, Input, Path
 
 import cv2
@@ -118,10 +120,49 @@ def download_weights(url, dest, extract=True) -> None:
     print("downloading url: ", url)
     print("downloading to: ", dest)
 
-    if extract:
-        subprocess.check_call(["pget", "-x", url, dest], close_fds=False)
+    dest_path = Path(dest)
+
+    # Check if dest is a directory or a file
+    if dest_path.exists() and dest_path.is_dir():
+        # If dest exists and is a directory, use it directly
+        target_dir = dest_path
     else:
-        subprocess.check_call(["pget", url, dest], close_fds=False)
+        # If dest does not exist or is not a directory, create the parent directory
+        target_dir = dest_path if dest_path.suffix == '' else dest_path.parent
+
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+    except Exception as e:
+        print(e)
+
+    
+    pid_file = str(target_dir / "pget.pid") 
+
+
+    dest_path = Path(dest)
+    dest_size = dest_path.stat().st_size if dest_path.exists() else 0
+    print("dest_size: ", dest_size)
+    print("dest_exists", dest_path.exists())
+    print("dest_isfile", dest_path.is_file())
+
+    print ("dest_path.parent.parent: ", str(target_dir.parent))
+    for file in os.listdir(str(target_dir.parent)):
+        print(file)
+
+
+    if not os.path.isfile(dest):
+        if extract:
+            subprocess.check_call(
+                ["pget", "--pid-file", pid_file, "-x", url, dest], close_fds=False
+            )
+        else:
+            subprocess.check_call(
+                ["pget", "--pid-file", pid_file, url, dest], close_fds=False
+            )
+    else:
+        print("File already exists, skipping download")
+    dest_size = dest_path.stat().st_size if dest_path.exists() else 0
+    print("dest_size: ", dest_size)
     print("downloading took: ", time.time() - start)
 
 
@@ -152,7 +193,6 @@ class Predictor(BasePredictor):
         """Load safety checker"""
         self.safety_checker = StableDiffusionSafetyChecker.from_pretrained(
             "CompVis/stable-diffusion-safety-checker",
-            root=SAFETY_MODEL_CACHE,
             torch_dtype=dtype,
         ).to(device)
         self.feature_extractor = CLIPImageProcessor.from_pretrained(
@@ -161,9 +201,42 @@ class Predictor(BasePredictor):
 
         """Load the model into memory to make running multiple predictions efficient"""
         self.width, self.height = 640, 640
+        model_dir = os.path.join(os.path.dirname(__file__), "..")
+        print("model_dir")
+        print(model_dir)
+
+        root_dir = "/"
+        print("root_dir")
+        print(root_dir)
+        for file in os.listdir(root_dir):
+            print(file)
+
+        current_dir = os.path.dirname(__file__)
+        files_in_current_dir = os.listdir(current_dir)
+        print("Files in Current Directory:")
+        for file in files_in_current_dir:
+            print(file)
+        # Define the subdirectory
+        subdir = os.path.join(
+            current_dir, "models"
+        )  # Adjust 'models' to your specific subdir
+        updir = os.path.join(current_dir, "..")
+
+        # List all files in the subdirectory
+        files_in_subdir = glob.glob(os.path.join(subdir, "*"))
+        print(f"Files in Subdirectory '{subdir}':")
+        for file in files_in_subdir:
+            print(file)
+
+        # List all files in the updir
+        files_in_updir = glob.glob(os.path.join(updir, "*"))
+        print(f"Files in Updirectory '{updir}':")
+        for file in files_in_updir:
+            print(file)
+
         self.app = FaceAnalysis(
             name="antelopev2",
-            root="./",
+            root=model_dir,
             providers=["CPUExecutionProvider"],
         )
         self.app.prepare(ctx_id=0, det_size=(self.width, self.height))
@@ -514,6 +587,7 @@ class Predictor(BasePredictor):
         else:
             # Set height and width from the face image
             height, width, _ = cv2_face_images[0].shape
+            face_info = face_infos[0]
 
         # Create control mask if needed
         if enhance_non_face_region:
