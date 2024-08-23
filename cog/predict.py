@@ -7,8 +7,8 @@ import sys
 import json
 import subprocess
 import time
-from pathlib import Path
 from cog import BasePredictor, Input, Path
+import tempfile
 
 import cv2
 import torch
@@ -52,7 +52,7 @@ FEATURE_EXTRACT_CACHE = "feature_extractor"
 LORA_CHECKPOINTS_CACHE = f"{CHECKPOINTS_CACHE}/lora"
 
 # default SDXL model
-DEFAULT_SDXL_MODEL = "SDXL RongHua V4"
+DEFAULT_SDXL_MODEL = "RealVisXL V4.0"
 
 # global variable
 MAX_SEED = np.iinfo(np.int32).max
@@ -128,16 +128,14 @@ def download_weights(url, dest, extract=True) -> None:
         target_dir = dest_path
     else:
         # If dest does not exist or is not a directory, create the parent directory
-        target_dir = dest_path if dest_path.suffix == '' else dest_path.parent
+        target_dir = dest_path if dest_path.suffix == "" else dest_path.parent
 
     try:
         os.makedirs(target_dir, exist_ok=True)
     except Exception as e:
         print(e)
 
-    
-    pid_file = str(target_dir / "pget.pid") 
-
+    pid_file = str(target_dir / "pget.pid")
 
     dest_path = Path(dest)
     dest_size = dest_path.stat().st_size if dest_path.exists() else 0
@@ -145,10 +143,9 @@ def download_weights(url, dest, extract=True) -> None:
     print("dest_exists", dest_path.exists())
     print("dest_isfile", dest_path.is_file())
 
-    print ("dest_path.parent.parent: ", str(target_dir.parent))
+    print("dest_path.parent.parent: ", str(target_dir.parent))
     for file in os.listdir(str(target_dir.parent)):
         print(file)
-
 
     if not os.path.isfile(dest):
         if extract:
@@ -497,11 +494,14 @@ class Predictor(BasePredictor):
         enhance_non_face_region: bool = Input(
             description="Enhance non-face region", default=True
         ),
+        num_images: int = Input(
+            description="Number of images to generate", default=1, ge=1, le=4
+        ),
         safety_checker: bool = Input(
             description="Safety checker is enabled by default. Un-tick to expose unfiltered results.",
             default=True,
         ),
-    ) -> Path:
+    ) -> list[Path]:
         """Run a single prediction on the model"""
         # Load the weights if they are different from the base weights
         if model != self.model:
@@ -671,7 +671,7 @@ class Predictor(BasePredictor):
 
         self.pipe.set_ip_adapter_scale(adapter_strength_ratio)
         # Aspect ratio of output image follows face_image_path or pose_image_path (if provided)
-        image = self.pipe(
+        result_images = self.pipe(
             prompt=prompt,
             negative_prompt=negative_prompt,
             image_embeds=average_face_emb,
@@ -683,24 +683,32 @@ class Predictor(BasePredictor):
             generator=generator,
             height=height,
             width=width,
-        ).images[0]
+            num_images_per_prompt=num_images,
+        ).images
 
-        output_path = "result.jpg"
-
-        output = [image]
-        if safety_checker:
-            image_list, has_nsfw_content = self.run_safety_checker(output)
-            if has_nsfw_content[0]:
-                print(
-                    "NSFW content detected. Try running it again, rephrase different prompt or add 'nsfw' in the negative prompt."
-                )
-                black = Image.fromarray(np.uint8(image_list[0])).convert(
-                    "RGB"
-                )  # black box image
-                black.save(output_path)
+        output_dir = Path(tempfile.mkdtemp())
+        output: list[Path] = []
+        for i, result_image in enumerate(result_images):
+            if safety_checker:
+                image_list, has_nsfw_content = self.run_safety_checker([result_image])
+                if has_nsfw_content[0]:
+                    print(
+                        "NSFW content detected. Try running it again, rephrase different prompt or add 'nsfw' in the negative prompt."
+                    )
+                    output_path = output_dir / "black_box.jpg"
+                    if not output_path.exists():
+                        black = Image.fromarray(np.uint8(image_list[0])).convert(
+                            "RGB"
+                        )  # black box image
+                        black.save(output_path)
+                    output.append(output_path)
+                else:
+                    output_path = output_dir / f"output_{i}.jpg"
+                    result_image.save(output_path)
+                    output.append(output_path)
             else:
-                image.save(output_path)
-        else:
-            image.save(output_path)
+                output_path = output_dir / f"output_{i}.jpg"
+                result_image.save(output_path)
+                output.append(output_path)
 
-        return Path(output_path)
+        return output

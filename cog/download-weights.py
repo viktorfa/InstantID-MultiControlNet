@@ -118,4 +118,4 @@ DepthAnything.from_pretrained(
 )
 
 # Download and save default SDXL model only
-# setup_sdxl_pipeline(DEFAULT_SDXL_MODEL)
+setup_sdxl_pipeline(DEFAULT_SDXL_MODEL)

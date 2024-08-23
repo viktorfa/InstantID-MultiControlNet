@@ -29,6 +29,12 @@
             "filename": "ronghua_xl.safetensors",
             "url": "https://civitai.com/api/download/models/253479",
             "cacheFolder": "./checkpoints/ronghua_xl"
+        },
+        {
+            "name": "RealVisXL V4.0",
+            "filename": "realvis_xl.safetensors",
+            "url": "https://civitai.com/api/download/models/361593",
+            "cacheFolder": "./checkpoints/realvis_xl"
         }
     ]
 }
